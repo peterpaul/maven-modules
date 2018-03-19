@@ -1,0 +1,3 @@
+rootProject.name = 'maven-dependencies'
+rootProject.buildFileName = 'build.gradle.kts'
+
