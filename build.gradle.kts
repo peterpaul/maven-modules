@@ -5,7 +5,7 @@ version = "1.0-SNAPSHOT"
 
 buildscript {
     var kotlin_version: String by extra
-    kotlin_version = "1.2.10"
+    kotlin_version = "1.2.30"
 
     repositories {
         mavenCentral()
@@ -34,4 +34,3 @@ dependencies {
 tasks.withType<KotlinCompile> {
     kotlinOptions.jvmTarget = "1.8"
 }
-
