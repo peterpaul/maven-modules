@@ -12,7 +12,8 @@ data class MavenCoordinate (
         val groupId: String,
         val artifactId: String,
         val version: String?,
-        val scope: String?
+        val scope: String?,
+        val type: String?
 )
 
 data class MavenPom (
@@ -74,13 +75,15 @@ fun Node?.tryGroupId(): String? = this?.trySingle("groupId")?.textContent
 fun Node?.tryArtifactId(): String? = this?.trySingle("artifactId")?.textContent
 fun Node?.tryVersion(): String? = this?.trySingle("version")?.textContent
 fun Node?.tryScope(): String? = this?.trySingle("scope")?.textContent
+fun Node?.tryType(): String? = this?.trySingle("type")?.textContent ?: this?.trySingle("packaging")?.textContent
 
 fun Node.mavenCoordinate(): MavenCoordinate {
     return MavenCoordinate(
             this.groupId(),
             this.artifactId(),
             this.tryVersion(),
-            this.tryScope()
+            this.tryScope(),
+            this.tryType()
     )
 }
 
@@ -89,7 +92,8 @@ fun Node.mavenCoordinateUsingDefault(defaultMavenCoordinate: MavenCoordinate): M
             this.tryGroupId() ?: defaultMavenCoordinate.groupId,
             this.tryArtifactId() ?: defaultMavenCoordinate.artifactId,
             this.tryVersion() ?: defaultMavenCoordinate.version,
-            this.tryScope()
+            this.tryScope(),
+            this.tryType()
     )
 }
 
