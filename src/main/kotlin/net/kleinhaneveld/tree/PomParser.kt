@@ -6,6 +6,7 @@ import org.w3c.dom.Node
 import org.w3c.dom.NodeList
 import java.io.File
 import java.io.FileFilter
+import java.util.*
 import javax.xml.parsers.DocumentBuilderFactory
 
 data class MavenCoordinate (
@@ -24,14 +25,20 @@ data class MavenPom (
 
 data class MavenVertex (
         val groupId: String,
-        val artifactId: String
+        val artifactId: String,
+        val type: String?
 ) {
-    override fun toString(): String {
-        return "$groupId:$artifactId"
+    override fun toString(): String = "$groupId:$artifactId"
+
+    override fun equals(other: Any?): Boolean = when (other) {
+        is MavenVertex -> Objects.equals(this.groupId, other.groupId) && Objects.equals(this.artifactId, other.artifactId)
+        else -> false
     }
+
+    override fun hashCode(): Int = Objects.hash(this.groupId, this.artifactId)
 }
 
-fun MavenCoordinate.toVertex(): MavenVertex = MavenVertex(this.groupId, this.artifactId)
+fun MavenCoordinate.toVertex(): MavenVertex = MavenVertex(this.groupId, this.artifactId, this.type)
 
 data class MavenEdge (
         override val parent: MavenVertex,
@@ -87,6 +94,19 @@ fun Node.mavenCoordinate(): MavenCoordinate {
     )
 }
 
+fun Node.mavenCoordinate(parent: MavenCoordinate?, project: MavenCoordinate): MavenCoordinate {
+    val groupId = this.groupId().replace("\${project.groupId}", project.groupId).replace("\${project.parent.groupId}", parent?.groupId ?: "")
+    val artifactId = this.artifactId().replace("\${project.artifactId}", project.artifactId).replace("\${project.parent.artifactId}", parent?.artifactId ?: "")
+    val version = this.tryVersion()?.replace("\${project.version}", project.version ?: "")?.replace("\${project.parent.version}", parent?.version ?: "")
+    return MavenCoordinate(
+            groupId,
+            artifactId,
+            version,
+            this.tryScope(),
+            this.tryType()
+    )
+}
+
 fun Node.mavenCoordinateUsingDefault(defaultMavenCoordinate: MavenCoordinate): MavenCoordinate {
     return MavenCoordinate(
             this.tryGroupId() ?: defaultMavenCoordinate.groupId,
@@ -108,18 +128,17 @@ fun Document.mavenPom(): MavenPom {
     } else {
         project.mavenCoordinate()
     }
+    val correctedPomCoordinate = pomCoordinate.copy(type = pomCoordinate.type ?: "jar")
     val dependencies: List<MavenCoordinate> = project
             .dependencies()
-            .map { it.mavenCoordinate() }
+            .map { it.mavenCoordinate(parent, pomCoordinate) }
             .toList()
-    return MavenPom(parent, pomCoordinate, dependencies)
+    return MavenPom(parent, correctedPomCoordinate, dependencies)
 }
 
 fun parsePom(fileName: File): MavenPom {
     val pomDocument = documentBuilderFactory.newDocumentBuilder().parse(fileName)
-    val out = pomDocument.mavenPom()
-    println(out)
-    return out
+    return pomDocument.mavenPom()
 }
 
 fun parseDir(fileName: File): List<MavenPom> {
@@ -142,17 +161,27 @@ fun MavenPom.edges(): List<MavenEdge> {
     }
 }
 
+fun userHome(): String = System.getProperty("user.home")
+
 fun main(args: Array<String>) {
-    val poms = parseDir(File("/home/peterpaulk/projects/federation"))
+    val poms = parseDir(File("${userHome()}/projects/federation"))
     println("size: ${poms.size}")
 
     val vertices: Set<MavenVertex> = poms.map { it.coordinate.toVertex() }.toSet()
+    val vertexMap: Map<String, MavenVertex> = vertices.associateBy { it.toString() }
     println("vertices size = ${vertices.size}")
-    val edges: Set<MavenEdge> = poms.flatMap { it.edges() }.filter { it.parent in vertices && it.child in vertices }.toSet()
+    val edges: Set<MavenEdge> = poms.flatMap { it.edges() }
+            .filter { it.parent in vertices && it.child in vertices }
+            .map { MavenEdge(it.parent, vertexMap.getOrDefault(it.child.toString(), it.child)) }
+            .toSet()
     println("edges size = ${edges.size}")
     val root = poms.last().coordinate.toVertex()
     println("root: $root")
     val graph = Graph(vertices, edges, root)
 
-    vertices.filter { graph.orderIncoming(it) == 0 }.forEach { println(it) }
+    vertices.filter { graph.orderIncoming(it) == 0 }
+            .filter { it.type?.equals("jar") ?: true }
+            //.filter { !it.artifactId.contains("-test") }
+            .forEach { println(it) }
+
 }
