@@ -1,11 +1,19 @@
 package net.kleinhaneveld.tree
 
+import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.subcommands
+import com.github.ajalt.clikt.parameters.arguments.argument
+import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.flag
+import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.types.file
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import org.w3c.dom.Node
 import org.w3c.dom.NodeList
 import java.io.File
 import java.io.FileFilter
+import java.nio.file.Paths
 import java.util.*
 import javax.xml.parsers.DocumentBuilderFactory
 
@@ -14,7 +22,8 @@ data class MavenCoordinate (
         val artifactId: String,
         val version: String?,
         val scope: String?,
-        val type: String?
+        val type: String?,
+        val sourceFiles: Int
 )
 
 data class MavenPom (
@@ -26,9 +35,10 @@ data class MavenPom (
 data class MavenVertex (
         val groupId: String,
         val artifactId: String,
-        val type: String?
+        val type: String?,
+        val sourceFiles: Int
 ) {
-    override fun toString(): String = "$groupId:$artifactId"
+    override fun toString(): String = "$groupId:$artifactId:$type - $sourceFiles"
 
     override fun equals(other: Any?): Boolean = when (other) {
         is MavenVertex -> Objects.equals(this.groupId, other.groupId) && Objects.equals(this.artifactId, other.artifactId)
@@ -38,7 +48,7 @@ data class MavenVertex (
     override fun hashCode(): Int = Objects.hash(this.groupId, this.artifactId)
 }
 
-fun MavenCoordinate.toVertex(): MavenVertex = MavenVertex(this.groupId, this.artifactId, this.type)
+fun MavenCoordinate.toVertex(): MavenVertex = MavenVertex(this.groupId, this.artifactId, this.type, this.sourceFiles)
 
 data class MavenEdge (
         override val parent: MavenVertex,
@@ -84,17 +94,18 @@ fun Node?.tryVersion(): String? = this?.trySingle("version")?.textContent
 fun Node?.tryScope(): String? = this?.trySingle("scope")?.textContent
 fun Node?.tryType(): String? = this?.trySingle("type")?.textContent ?: this?.trySingle("packaging")?.textContent
 
-fun Node.mavenCoordinate(): MavenCoordinate {
+fun Node.mavenCoordinate(sourceFiles: Int): MavenCoordinate {
     return MavenCoordinate(
             this.groupId(),
             this.artifactId(),
             this.tryVersion(),
             this.tryScope(),
-            this.tryType()
+            this.tryType(),
+            sourceFiles
     )
 }
 
-fun Node.mavenCoordinate(parent: MavenCoordinate?, project: MavenCoordinate): MavenCoordinate {
+fun Node.mavenCoordinate(parent: MavenCoordinate?, project: MavenCoordinate, sourceFiles: Int): MavenCoordinate {
     val groupId = this.groupId().replace("\${project.groupId}", project.groupId).replace("\${project.parent.groupId}", parent?.groupId ?: "")
     val artifactId = this.artifactId().replace("\${project.artifactId}", project.artifactId).replace("\${project.parent.artifactId}", parent?.artifactId ?: "")
     val version = this.tryVersion()?.replace("\${project.version}", project.version ?: "")?.replace("\${project.parent.version}", parent?.version ?: "")
@@ -103,42 +114,47 @@ fun Node.mavenCoordinate(parent: MavenCoordinate?, project: MavenCoordinate): Ma
             artifactId,
             version,
             this.tryScope(),
-            this.tryType()
+            this.tryType(),
+            sourceFiles
     )
 }
 
-fun Node.mavenCoordinateUsingDefault(defaultMavenCoordinate: MavenCoordinate): MavenCoordinate {
+fun Node.mavenCoordinateUsingDefault(defaultMavenCoordinate: MavenCoordinate, sourceFiles: Int): MavenCoordinate {
     return MavenCoordinate(
             this.tryGroupId() ?: defaultMavenCoordinate.groupId,
             this.tryArtifactId() ?: defaultMavenCoordinate.artifactId,
             this.tryVersion() ?: defaultMavenCoordinate.version,
             this.tryScope(),
-            this.tryType()
+            this.tryType(),
+            sourceFiles
     )
 }
 
 fun Node.tryChildrenOfSingle(tagName: String): Sequence<Node> = this.trySingle(tagName)?.childNodes?.asSequence() ?: emptySequence()
 fun Node.dependencies(): Sequence<Element> = this.tryChildrenOfSingle("dependencies").filterIsInstance<Element>()
 
-fun Document.mavenPom(): MavenPom {
+fun Document.mavenPom(sourceFiles: Int): MavenPom {
     val project = this.documentElement
-    val parent: MavenCoordinate? = project.trySingle("parent")?.mavenCoordinate()
+    val parent: MavenCoordinate? = project.trySingle("parent")?.mavenCoordinate(sourceFiles)
     val pomCoordinate: MavenCoordinate = if (parent != null) {
-        project.mavenCoordinateUsingDefault(parent)
+        project.mavenCoordinateUsingDefault(parent, sourceFiles)
     } else {
-        project.mavenCoordinate()
+        project.mavenCoordinate(sourceFiles)
     }
     val correctedPomCoordinate = pomCoordinate.copy(type = pomCoordinate.type ?: "jar")
     val dependencies: List<MavenCoordinate> = project
             .dependencies()
-            .map { it.mavenCoordinate(parent, pomCoordinate) }
+            .map { it.mavenCoordinate(parent, pomCoordinate, sourceFiles) }
             .toList()
     return MavenPom(parent, correctedPomCoordinate, dependencies)
 }
 
 fun parsePom(fileName: File): MavenPom {
     val pomDocument = documentBuilderFactory.newDocumentBuilder().parse(fileName)
-    return pomDocument.mavenPom()
+    val sourceFiles = File(File(fileName.parentFile, "src"), "main").walkBottomUp()
+            .filter { it.isFile }
+            .count()
+    return pomDocument.mavenPom(sourceFiles)
 }
 
 fun parseDir(fileName: File): List<MavenPom> {
@@ -161,26 +177,54 @@ fun MavenPom.edges(): List<MavenEdge> {
     }
 }
 
-fun main(args: Array<String>) {
-    val poms = parseDir(File(args[0]))
-    println("size: ${poms.size}")
+fun mavenGraph(mavenProjectDirectory: File): Graph<MavenVertex, MavenEdge> {
+    val poms = parseDir(mavenProjectDirectory)
 
     val vertices: Set<MavenVertex> = poms.map { it.coordinate.toVertex() }.toSet()
     val vertexMap: Map<String, MavenVertex> = vertices.associateBy { it.toString() }
-    println("vertices size = ${vertices.size}")
     val edges: Set<MavenEdge> = poms.flatMap { it.edges() }
             .filter { it.parent in vertices && it.child in vertices }
             .map { MavenEdge(it.parent, vertexMap.getOrDefault(it.child.toString(), it.child)) }
             .toSet()
-    println("edges size = ${edges.size}")
     val root = poms.last().coordinate.toVertex()
-    println("root: $root")
-    val graph = Graph(vertices, edges, root)
+    return Graph(vertices, edges, root)
+}
 
-    vertices.filter { graph.orderIncoming(it) == 0 }
-            .filter { it.type?.equals("jar") ?: true }
-            .filter { !it.artifactId.endsWith("-test") }
-            .filter { !it.artifactId.endsWith("-tests") }
-            .forEach { println(it) }
+class TopLevelModules : CliktCommand(name = "top-level-modules") {
+    private val directory: File by option(help = "Maven project directory (default is current working directory)").file().default(
+            Paths.get("").toAbsolutePath().toFile()
+    )
+    private val type: String? by option()
+    private val skipTests: Boolean by option("--skip-tests").flag("--with-tests", default = false)
+    override fun run() {
+        val graph = mavenGraph(directory)
+        graph.vertices.filter { graph.orderIncoming(it) == 0 }
+                .filter { type == null || it.type?.equals(type) ?: true }
+                .filter { !skipTests || !it.artifactId.contains("-test") }
+                .forEach { println(it) }
+    }
+}
 
+class ModuleSourceFiles : CliktCommand(name = "module-source-files") {
+    val directory: File by option(help = "Maven project directory (default is current working directory)").file().default(
+            Paths.get("").toAbsolutePath().toFile()
+    )
+    override fun run() {
+        val graph = mavenGraph(directory)
+        graph.vertices.filter { it.type?.equals("jar") ?: true }
+                .sortedWith(kotlin.Comparator { o1, o2 ->  o2.sourceFiles - o1.sourceFiles})
+                .forEach {println(it)}
+    }
+}
+
+class MavenDependencies : CliktCommand(name = "maven-dependencies") {
+    override fun run() {
+
+    }
+}
+
+fun main(args: Array<String>) {
+    MavenDependencies().subcommands(
+            TopLevelModules(),
+            ModuleSourceFiles()).main(args)
 }
