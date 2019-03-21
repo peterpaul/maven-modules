@@ -23,7 +23,7 @@ private fun <V, E : Edge<V>>edgesOfVertices(edges: Set<E>): Map<V, Set<E>> {
 
     val edgesOfVertexMaps: Set<Map<V, Set<E>>> = edges.map { e -> extractEdgesOfVertexMapFromEdge(e) }.toSet()
 
-    return edgesOfVertexMaps.fold(emptyMap(), { a, b -> concatenateEdgesOfVertexMaps(a, b)} )
+    return edgesOfVertexMaps.fold(emptyMap()) { a, b -> concatenateEdgesOfVertexMaps(a, b)}
 }
 
 class Graph<V, out E : Edge<V>> (
@@ -86,7 +86,7 @@ class Graph<V, out E : Edge<V>> (
         val builder = StringBuilder()
         builder.append("digraph G {\n")
         for (v in vertices) {
-            builder.append("\"" + v + "\";\n")
+            builder.append("\"$v\";\n")
         }
         for (e in edges) {
             builder.append("\"" + e.parent + "\" -> \"" + e.child + "\" [label=\"" + e + "\"];\n")
