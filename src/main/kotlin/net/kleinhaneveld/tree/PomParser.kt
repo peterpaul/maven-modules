@@ -154,17 +154,15 @@ fun parseDir(fileName: File): List<MavenPom> {
 fun MavenPom.edges(): List<MavenEdge> {
     val parent = this.coordinate.toVertex()
     val dependencies = this.dependencies.map { MavenEdge(parent, it.toVertex()) }
-    if (this.parent != null) {
-        return dependencies + MavenEdge(parent, this.parent.toVertex())
+    return if (this.parent != null) {
+        dependencies + MavenEdge(parent, this.parent.toVertex())
     } else {
-        return dependencies
+        dependencies
     }
 }
 
-fun userHome(): String = System.getProperty("user.home")
-
 fun main(args: Array<String>) {
-    val poms = parseDir(File("${userHome()}/projects/federation"))
+    val poms = parseDir(File(args[0]))
     println("size: ${poms.size}")
 
     val vertices: Set<MavenVertex> = poms.map { it.coordinate.toVertex() }.toSet()
@@ -181,7 +179,8 @@ fun main(args: Array<String>) {
 
     vertices.filter { graph.orderIncoming(it) == 0 }
             .filter { it.type?.equals("jar") ?: true }
-            //.filter { !it.artifactId.contains("-test") }
+            .filter { !it.artifactId.endsWith("-test") }
+            .filter { !it.artifactId.endsWith("-tests") }
             .forEach { println(it) }
 
 }
