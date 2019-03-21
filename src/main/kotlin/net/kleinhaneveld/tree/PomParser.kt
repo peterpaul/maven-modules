@@ -45,7 +45,7 @@ data class MavenEdge (
         override val child: MavenVertex
 ) : Edge<MavenVertex>
 
-val documentBuilderFactory = DocumentBuilderFactory.newInstance()
+val documentBuilderFactory = DocumentBuilderFactory.newInstance()!!
 
 class NodeListIterator(private val nodeList: NodeList) : Iterator<Node> {
     private var currentPosition = 0
