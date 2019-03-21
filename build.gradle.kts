@@ -1,3 +1,5 @@
+import org.gradle.jvm.tasks.Jar
+
 group = "net.kleinhaneveld.mavendependencies"
 version = "1.0-SNAPSHOT"
 
@@ -16,6 +18,7 @@ repositories {
 dependencies {
     // Use the Kotlin JDK 8 standard library
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    implementation("com.github.ajalt:clikt:1.6.0")
 
     // Use the Kotlin test library
     testImplementation("org.jetbrains.kotlin:kotlin-test")
@@ -27,4 +30,14 @@ dependencies {
 application {
     // Define the main class for the application
     mainClassName = "net.kleinhaneveld.tree.PomParserKt"
+}
+
+tasks.withType<Jar> {
+    manifest.attributes.apply {
+        put("Main-Class", "net.kleinhaneveld.tree.PomParserKt")
+    }
+
+    configurations.runtimeClasspath.filter {
+        it.name.endsWith(".jar")
+    }.forEach { jar -> from(zipTree(jar))}
 }
