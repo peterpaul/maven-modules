@@ -1,4 +1,5 @@
 import org.gradle.jvm.tasks.Jar
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 group = "net.kleinhaneveld.mavendependencies"
 version = "1.0-SNAPSHOT"
@@ -39,5 +40,11 @@ tasks.withType<Jar> {
 
     configurations.runtimeClasspath.get().filter {
         it.name.endsWith(".jar")
-    }.forEach { jar -> from(zipTree(jar))}
+    }.forEach { jar -> from(zipTree(jar)) }
+}
+
+tasks.withType<KotlinCompile> {
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
 }

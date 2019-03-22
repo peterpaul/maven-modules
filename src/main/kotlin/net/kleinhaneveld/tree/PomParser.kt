@@ -1,6 +1,8 @@
 package net.kleinhaneveld.tree
 
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.findObject
+import com.github.ajalt.clikt.core.requireObject
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.multiple
@@ -8,241 +10,106 @@ import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.file
-import org.w3c.dom.Document
-import org.w3c.dom.Element
-import org.w3c.dom.Node
-import org.w3c.dom.NodeList
 import java.io.File
-import java.io.FileFilter
 import java.nio.file.Paths
-import java.util.*
-import javax.xml.parsers.DocumentBuilderFactory
 
-data class MavenCoordinate(
-        val groupId: String,
-        val artifactId: String,
-        val version: String?,
-        val scope: String?,
-        val type: String?,
-        val sourceFiles: Int
-)
-
-data class MavenPom(
-        val parent: MavenCoordinate?,
-        val coordinate: MavenCoordinate,
-        val dependencies: List<MavenCoordinate>
-)
-
-data class MavenVertex(
-        val groupId: String,
-        val artifactId: String,
-        val type: String?,
-        val sourceFiles: Int
-) {
-    fun toKey(): String = "$groupId:$artifactId"
-
-    override fun toString(): String = "$groupId:$artifactId:$type - $sourceFiles"
-
-    override fun equals(other: Any?): Boolean = when (other) {
-        is MavenVertex -> Objects.equals(this.groupId, other.groupId) && Objects.equals(this.artifactId, other.artifactId)
-        else -> false
-    }
-
-    override fun hashCode(): Int = Objects.hash(this.groupId, this.artifactId)
-    // override fun hashCode(): Int = this.groupId.hashCode() + this.artifactId.hashCode()
-}
-
-fun MavenCoordinate.toVertex(): MavenVertex = MavenVertex(this.groupId, this.artifactId, this.type, this.sourceFiles)
-
-data class MavenEdge(
-        override val parent: MavenVertex,
-        override val child: MavenVertex
-) : Edge<MavenVertex>
-
-val documentBuilderFactory = DocumentBuilderFactory.newInstance()!!
-
-class NodeListIterator(private val nodeList: NodeList) : Iterator<Node> {
-    private var currentPosition = 0
-
-    override fun hasNext(): Boolean = currentPosition < nodeList.length
-
-    override fun next(): Node {
-        if (hasNext()) {
-            val out = nodeList.item(currentPosition)
-            currentPosition++
-            return out
-        } else {
-            throw NoSuchElementException()
+abstract class BaseCommand(help: String, name: String) : CliktCommand(help = help, name = name) {
+    private val files by requireObject<Map<String, File>>()
+    private val flags by requireObject<Map<String, Boolean>>()
+    private fun directory(): File = files["DIRECTORY"] ?: throw IllegalStateException()
+    private fun verbose(): Boolean = flags["VERBOSE"] ?: throw IllegalStateException()
+    fun mavenGraph(): Graph<MavenVertex, MavenEdge> = mavenGraph(directory())
+    fun debug(line: String) {
+        if (verbose()) {
+            System.err.println(line)
         }
     }
+    fun error(line: String) = System.err.println(line)
 }
 
-fun NodeList.iterator(): Iterator<Node> = NodeListIterator(this)
-fun NodeList.asSequence(): Sequence<Node> = Sequence { this.iterator() }
-fun Node.single(tagName: String): Node = this.trySingle(tagName)
-        ?: throw IllegalStateException("Expected single, but got no or multiple $tagName's")
+class TopLevelModules : BaseCommand(
+        name = "top-level-modules",
+        help = "List all top-level modules in the repository. " +
+                "Top-level modules are modules that are not depended on by other modules in this repository.") {
+    private val type: String? by option(help = "Module types to list (e.g. jar, war, pom).")
+    private val skipType: String? by option("--skip-type", help = "Module types to skip (e.g. jar, war, pom)")
+    private val skipTests: Boolean by option("--skip-tests",
+            help = "Flag to control filtering of test modules. Test modules are modules with '-test' in the artifactId.")
+            .flag("--with-tests", default = false)
 
-fun Node.trySingle(tagName: String): Node? = when (this) {
-    is Element -> this.childNodes
-            .asSequence()
-            .filterIsInstance<Element>()
-            .filter { it.nodeName == tagName }
-            .singleOrNull()
-    else -> null
-}
-
-fun Node.groupId(): String = this.single("groupId").textContent
-fun Node.artifactId(): String = this.single("artifactId").textContent
-fun Node?.tryGroupId(): String? = this?.trySingle("groupId")?.textContent
-fun Node?.tryArtifactId(): String? = this?.trySingle("artifactId")?.textContent
-fun Node?.tryVersion(): String? = this?.trySingle("version")?.textContent
-fun Node?.tryScope(): String? = this?.trySingle("scope")?.textContent
-fun Node?.tryType(): String? = this?.trySingle("type")?.textContent ?: this?.trySingle("packaging")?.textContent
-
-fun Node.mavenCoordinate(sourceFiles: Int): MavenCoordinate {
-    return MavenCoordinate(
-            this.groupId(),
-            this.artifactId(),
-            this.tryVersion(),
-            this.tryScope(),
-            this.tryType(),
-            sourceFiles
-    )
-}
-
-fun Node.mavenCoordinate(parent: MavenCoordinate?, project: MavenCoordinate, sourceFiles: Int): MavenCoordinate {
-    val groupId = this.groupId().replace("\${project.groupId}", project.groupId).replace("\${project.parent.groupId}", parent?.groupId
-            ?: "")
-    val artifactId = this.artifactId().replace("\${project.artifactId}", project.artifactId).replace("\${project.parent.artifactId}", parent?.artifactId
-            ?: "")
-    val version = this.tryVersion()?.replace("\${project.version}", project.version
-            ?: "")?.replace("\${project.parent.version}", parent?.version ?: "")
-    return MavenCoordinate(
-            groupId,
-            artifactId,
-            version,
-            this.tryScope(),
-            this.tryType(),
-            sourceFiles
-    )
-}
-
-fun Node.mavenCoordinateUsingDefault(defaultMavenCoordinate: MavenCoordinate, sourceFiles: Int): MavenCoordinate {
-    return MavenCoordinate(
-            this.tryGroupId() ?: defaultMavenCoordinate.groupId,
-            this.tryArtifactId() ?: defaultMavenCoordinate.artifactId,
-            this.tryVersion() ?: defaultMavenCoordinate.version,
-            this.tryScope(),
-            this.tryType(),
-            sourceFiles
-    )
-}
-
-fun Node.tryChildrenOfSingle(tagName: String): Sequence<Node> = this.trySingle(tagName)?.childNodes?.asSequence()
-        ?: emptySequence()
-
-fun Node.dependencies(): Sequence<Element> = this.tryChildrenOfSingle("dependencies").filterIsInstance<Element>()
-
-fun Document.mavenPom(sourceFiles: Int): MavenPom {
-    val project = this.documentElement
-    val parent: MavenCoordinate? = project.trySingle("parent")?.mavenCoordinate(sourceFiles)
-    val pomCoordinate: MavenCoordinate = if (parent != null) {
-        project.mavenCoordinateUsingDefault(parent, sourceFiles)
-    } else {
-        project.mavenCoordinate(sourceFiles)
-    }
-    val correctedPomCoordinate = pomCoordinate.copy(type = pomCoordinate.type ?: "jar")
-    val dependencies: List<MavenCoordinate> = project
-            .dependencies()
-            .map { it.mavenCoordinate(parent, pomCoordinate, sourceFiles) }
-            .toList()
-    return MavenPom(parent, correctedPomCoordinate, dependencies)
-}
-
-fun parsePom(fileName: File): MavenPom {
-    val pomDocument = documentBuilderFactory.newDocumentBuilder().parse(fileName)
-    val sourceFiles = File(File(fileName.parentFile, "src"), "main").walkBottomUp()
-            .filter { it.isFile }
-            .count()
-    return pomDocument.mavenPom(sourceFiles)
-}
-
-fun parseDir(fileName: File): List<MavenPom> {
-    return if (fileName.isDirectory) {
-        fileName.listFiles(FileFilter { it.isDirectory && File(it, "pom.xml").exists() })
-                .flatMap { parseDir(it) }
-                .toList() + parsePom(File(fileName, "pom.xml"))
-    } else {
-        emptyList()
-    }
-}
-
-fun MavenPom.edges(): List<MavenEdge> {
-    val parent = this.coordinate.toVertex()
-    val dependencies = this.dependencies.map { MavenEdge(parent, it.toVertex()) }
-    return if (this.parent != null) {
-        dependencies // + MavenEdge(parent, this.parent.toVertex())
-    } else {
-        dependencies
-    }
-}
-
-fun mavenGraph(mavenProjectDirectory: File): Graph<MavenVertex, MavenEdge> {
-    val poms = parseDir(mavenProjectDirectory)
-
-    val vertices: Set<MavenVertex> = poms.map { it.coordinate.toVertex() }.toSet()
-    val vertexMap: Map<String, MavenVertex> = vertices.associateBy { it.toKey() }
-    val edges: Set<MavenEdge> = poms.flatMap { it.edges() }
-            .filter { it.parent in vertices && it.child in vertices }
-            .map { MavenEdge(it.parent, vertexMap.getOrDefault(it.child.toKey(), it.child)) }
-            .toSet()
-    val root = poms.last().coordinate.toVertex()
-    return Graph(vertices, edges, root)
-}
-
-class TopLevelModules : CliktCommand(name = "top-level-modules") {
-    private val directory: File by option(help = "Maven project directory (default is current working directory)").file().default(
-            Paths.get("").toAbsolutePath().toFile()
-    )
-    private val type: String? by option()
-    private val skipTests: Boolean by option("--skip-tests").flag("--with-tests", default = false)
     override fun run() {
-        val graph = mavenGraph(directory)
+        val graph = mavenGraph()
         graph.vertices.filter { graph.orderIncoming(it) == 0 }
                 .filter {
                     (type == null || it.type?.equals(type) ?: true)
+                            && (skipType == null || !(it.type?.equals(skipType) ?: false))
                             && (!skipTests || !it.artifactId.contains("-test"))
                 }
                 .forEach { println(it) }
     }
 }
 
-class ModuleSourceFiles : CliktCommand(name = "module-source-files") {
-    val directory: File by option(help = "Maven project directory (default is current working directory)")
-            .file()
-            .default(Paths.get("").toAbsolutePath().toFile())
+class ModuleSourceFiles : BaseCommand(
+        name = "module-source-files",
+        help = "List all modules sorted by number of source files."
+) {
+    private val type: String? by option(help = "Module types to list (e.g. jar, war, pom).")
+    private val skipType: String? by option("--skip-type", help = "Module types to skip (e.g. jar, war, pom)")
+    private val skipTests: Boolean by option("--skip-tests",
+            help = "Flag to control filtering of test modules. Test modules are modules with '-test' in the artifactId.")
+            .flag("--with-tests", default = false)
 
     override fun run() {
-        val graph = mavenGraph(directory)
-        graph.vertices.filter { it.type?.equals("jar") ?: true }
+        val graph = mavenGraph()
+        graph.vertices.asSequence()
+                .filter {
+                    (type == null || it.type?.equals(type) ?: true)
+                            && (skipType == null || !(it.type?.equals(skipType) ?: false))
+                            && (!skipTests || !it.artifactId.contains("-test"))
+                }
                 .sortedWith(kotlin.Comparator { o1, o2 -> o2.sourceFiles - o1.sourceFiles })
                 .forEach { println(it) }
     }
 }
 
-class SubGraphDot : CliktCommand(name = "subgraph-dot") {
-    val directory: File by option(help = "Maven project directory (default is current working directory)")
-            .file()
-            .default(Paths.get("").toAbsolutePath().toFile())
-    val module by argument("Module to investigate")
+class ModuleDependencyCount : BaseCommand(name = "module-dependency-count",
+        help = "List all modules in the repository sorted by dependency count.") {
+    private val type: String? by option(help = "Module types to list (e.g. jar, war, pom).")
+    private val skipType: String? by option("--skip-type", help = "Module types to skip (e.g. jar, war, pom)")
+    private val skipTests: Boolean by option("--skip-tests",
+            help = "Flag to control filtering of test modules. Test modules are modules with '-test' in the artifactId.")
+            .flag("--with-tests", default = false)
 
     override fun run() {
-        val graph = mavenGraph(directory)
+        val graph = mavenGraph()
+        graph.vertices.asSequence()
+                .filter {
+                    (type == null || it.type?.equals(type) ?: true)
+                            && (skipType == null || !(it.type?.equals(skipType) ?: false))
+                            && (!skipTests || !it.artifactId.contains("-test"))
+                }
+                .map {
+                    val orderIncoming = graph.orderIncoming(it)
+                    Pair(orderIncoming, it)
+                }
+                .sortedWith(kotlin.Comparator { a, b -> b.first - a.first })
+                .forEach {
+                    println("${it.first} - ${it.second}")
+                }
+    }
+}
+
+class SubGraphDot : BaseCommand(name = "subgraph-dot",
+        help = "Generate dot graph for MODULE.") {
+    private val module by argument(help = "Module to investigate")
+
+    override fun run() {
+        val graph = mavenGraph()
         val vertex = toMavenVertex(module, graph)
         if (vertex != null){
             println(graph.inducedSubGraph(vertex).toDot())
         } else {
-            System.err.println("Module '$module' not found")
+            error("Module '$module' not found")
         }
     }
 }
@@ -254,17 +121,17 @@ fun <T>T?.ifNull(code: () -> Unit): T? {
     return this
 }
 
-class RemoveModule : CliktCommand(name = "remove-modules") {
-    val directory: File by option(help = "Maven project directory (default is current working directory)")
-            .file()
-            .default(Paths.get("").toAbsolutePath().toFile())
-    val modules by argument("Modules to delete").multiple(true)
+class RemoveModule : BaseCommand(
+        name = "delete-modules",
+        help = "Analyzes what modules can be removed from the repository, when deleting MODULES.") {
+    private val modules by argument(help = "Top-level modules to delete").multiple(true)
+
     override fun run() {
-        val graph = mavenGraph(directory)
+        val graph = mavenGraph()
         val subGraphs = modules.asSequence()
                 .map { module ->
                     toMavenVertex(module, graph).ifNull {
-                        System.err.println("Module not found: $module")
+                        error("Module not found: $module")
                     }
                 }
                 .filterNotNull()
@@ -272,17 +139,17 @@ class RemoveModule : CliktCommand(name = "remove-modules") {
                     if (graph.orderIncoming(it) == 0) {
                         true
                     } else {
-                        System.err.println("$it cannot be deleted")
+                        error("$it cannot be deleted")
                         false
                     }
                 }
                 .map {
-                    System.err.println("Calculating inducedSubGraph of $it")
+                    debug("Calculating inducedSubGraph of $it")
                     graph.inducedSubGraph(it)
                 }
                 .toList()
 
-        System.err.println("Calculating subGraph vertices")
+        debug("Calculating subGraph vertices")
         val subGraphVertices = subGraphs.asSequence()
                 .flatMap { it.vertices.asSequence() }
                 .toSet()
@@ -299,7 +166,7 @@ class RemoveModule : CliktCommand(name = "remove-modules") {
                 .toSet()
                 .parallelStream()
                 .forEach {
-                    System.err.println("Calculating inducedSubGraph of ${it}")
+                    debug("Calculating inducedSubGraph of $it")
                     result.removeAll(graph.inducedSubGraph(it).vertices)
                 }
 
@@ -315,8 +182,15 @@ private fun toMavenVertex(module: String, graph: Graph<MavenVertex, MavenEdge>):
 }
 
 class MavenDependencies : CliktCommand(name = "maven-dependencies") {
+    val files by findObject { mutableMapOf<String, File>() }
+    val flags by findObject { mutableMapOf<String, Boolean>() }
+    val directory: File by option(help = "Maven project directory (default is current working directory)")
+            .file()
+            .default(Paths.get("").toAbsolutePath().toFile())
+    val verbose: Boolean by option("--verbose", "-v", help = "Write debug output to stderr.").flag("--quiet", "-q", default = false)
     override fun run() {
-
+        files["DIRECTORY"] = directory
+        flags["VERBOSE"] = verbose
     }
 }
 
@@ -324,6 +198,7 @@ fun main(args: Array<String>) {
     MavenDependencies().subcommands(
             TopLevelModules(),
             ModuleSourceFiles(),
+            ModuleDependencyCount(),
             RemoveModule(),
             SubGraphDot()).main(args)
 }
