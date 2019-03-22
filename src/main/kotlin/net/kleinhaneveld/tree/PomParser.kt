@@ -3,6 +3,7 @@ package net.kleinhaneveld.tree
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.arguments.argument
+import com.github.ajalt.clikt.parameters.arguments.multiple
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
@@ -17,7 +18,7 @@ import java.nio.file.Paths
 import java.util.*
 import javax.xml.parsers.DocumentBuilderFactory
 
-data class MavenCoordinate (
+data class MavenCoordinate(
         val groupId: String,
         val artifactId: String,
         val version: String?,
@@ -26,18 +27,20 @@ data class MavenCoordinate (
         val sourceFiles: Int
 )
 
-data class MavenPom (
+data class MavenPom(
         val parent: MavenCoordinate?,
         val coordinate: MavenCoordinate,
         val dependencies: List<MavenCoordinate>
 )
 
-data class MavenVertex (
+data class MavenVertex(
         val groupId: String,
         val artifactId: String,
         val type: String?,
         val sourceFiles: Int
 ) {
+    fun toKey(): String = "$groupId:$artifactId"
+
     override fun toString(): String = "$groupId:$artifactId:$type - $sourceFiles"
 
     override fun equals(other: Any?): Boolean = when (other) {
@@ -46,11 +49,12 @@ data class MavenVertex (
     }
 
     override fun hashCode(): Int = Objects.hash(this.groupId, this.artifactId)
+    // override fun hashCode(): Int = this.groupId.hashCode() + this.artifactId.hashCode()
 }
 
 fun MavenCoordinate.toVertex(): MavenVertex = MavenVertex(this.groupId, this.artifactId, this.type, this.sourceFiles)
 
-data class MavenEdge (
+data class MavenEdge(
         override val parent: MavenVertex,
         override val child: MavenVertex
 ) : Edge<MavenVertex>
@@ -75,7 +79,8 @@ class NodeListIterator(private val nodeList: NodeList) : Iterator<Node> {
 
 fun NodeList.iterator(): Iterator<Node> = NodeListIterator(this)
 fun NodeList.asSequence(): Sequence<Node> = Sequence { this.iterator() }
-fun Node.single(tagName: String): Node = this.trySingle(tagName) ?: throw IllegalStateException("Expected single, but got no or multiple $tagName's")
+fun Node.single(tagName: String): Node = this.trySingle(tagName)
+        ?: throw IllegalStateException("Expected single, but got no or multiple $tagName's")
 
 fun Node.trySingle(tagName: String): Node? = when (this) {
     is Element -> this.childNodes
@@ -106,9 +111,12 @@ fun Node.mavenCoordinate(sourceFiles: Int): MavenCoordinate {
 }
 
 fun Node.mavenCoordinate(parent: MavenCoordinate?, project: MavenCoordinate, sourceFiles: Int): MavenCoordinate {
-    val groupId = this.groupId().replace("\${project.groupId}", project.groupId).replace("\${project.parent.groupId}", parent?.groupId ?: "")
-    val artifactId = this.artifactId().replace("\${project.artifactId}", project.artifactId).replace("\${project.parent.artifactId}", parent?.artifactId ?: "")
-    val version = this.tryVersion()?.replace("\${project.version}", project.version ?: "")?.replace("\${project.parent.version}", parent?.version ?: "")
+    val groupId = this.groupId().replace("\${project.groupId}", project.groupId).replace("\${project.parent.groupId}", parent?.groupId
+            ?: "")
+    val artifactId = this.artifactId().replace("\${project.artifactId}", project.artifactId).replace("\${project.parent.artifactId}", parent?.artifactId
+            ?: "")
+    val version = this.tryVersion()?.replace("\${project.version}", project.version
+            ?: "")?.replace("\${project.parent.version}", parent?.version ?: "")
     return MavenCoordinate(
             groupId,
             artifactId,
@@ -130,7 +138,9 @@ fun Node.mavenCoordinateUsingDefault(defaultMavenCoordinate: MavenCoordinate, so
     )
 }
 
-fun Node.tryChildrenOfSingle(tagName: String): Sequence<Node> = this.trySingle(tagName)?.childNodes?.asSequence() ?: emptySequence()
+fun Node.tryChildrenOfSingle(tagName: String): Sequence<Node> = this.trySingle(tagName)?.childNodes?.asSequence()
+        ?: emptySequence()
+
 fun Node.dependencies(): Sequence<Element> = this.tryChildrenOfSingle("dependencies").filterIsInstance<Element>()
 
 fun Document.mavenPom(sourceFiles: Int): MavenPom {
@@ -171,7 +181,7 @@ fun MavenPom.edges(): List<MavenEdge> {
     val parent = this.coordinate.toVertex()
     val dependencies = this.dependencies.map { MavenEdge(parent, it.toVertex()) }
     return if (this.parent != null) {
-        dependencies + MavenEdge(parent, this.parent.toVertex())
+        dependencies // + MavenEdge(parent, this.parent.toVertex())
     } else {
         dependencies
     }
@@ -181,10 +191,10 @@ fun mavenGraph(mavenProjectDirectory: File): Graph<MavenVertex, MavenEdge> {
     val poms = parseDir(mavenProjectDirectory)
 
     val vertices: Set<MavenVertex> = poms.map { it.coordinate.toVertex() }.toSet()
-    val vertexMap: Map<String, MavenVertex> = vertices.associateBy { it.toString() }
+    val vertexMap: Map<String, MavenVertex> = vertices.associateBy { it.toKey() }
     val edges: Set<MavenEdge> = poms.flatMap { it.edges() }
             .filter { it.parent in vertices && it.child in vertices }
-            .map { MavenEdge(it.parent, vertexMap.getOrDefault(it.child.toString(), it.child)) }
+            .map { MavenEdge(it.parent, vertexMap.getOrDefault(it.child.toKey(), it.child)) }
             .toSet()
     val root = poms.last().coordinate.toVertex()
     return Graph(vertices, edges, root)
@@ -199,21 +209,108 @@ class TopLevelModules : CliktCommand(name = "top-level-modules") {
     override fun run() {
         val graph = mavenGraph(directory)
         graph.vertices.filter { graph.orderIncoming(it) == 0 }
-                .filter { type == null || it.type?.equals(type) ?: true }
-                .filter { !skipTests || !it.artifactId.contains("-test") }
+                .filter {
+                    (type == null || it.type?.equals(type) ?: true)
+                            && (!skipTests || !it.artifactId.contains("-test"))
+                }
                 .forEach { println(it) }
     }
 }
 
 class ModuleSourceFiles : CliktCommand(name = "module-source-files") {
-    val directory: File by option(help = "Maven project directory (default is current working directory)").file().default(
-            Paths.get("").toAbsolutePath().toFile()
-    )
+    val directory: File by option(help = "Maven project directory (default is current working directory)")
+            .file()
+            .default(Paths.get("").toAbsolutePath().toFile())
+
     override fun run() {
         val graph = mavenGraph(directory)
         graph.vertices.filter { it.type?.equals("jar") ?: true }
-                .sortedWith(kotlin.Comparator { o1, o2 ->  o2.sourceFiles - o1.sourceFiles})
-                .forEach {println(it)}
+                .sortedWith(kotlin.Comparator { o1, o2 -> o2.sourceFiles - o1.sourceFiles })
+                .forEach { println(it) }
+    }
+}
+
+class SubGraphDot : CliktCommand(name = "subgraph-dot") {
+    val directory: File by option(help = "Maven project directory (default is current working directory)")
+            .file()
+            .default(Paths.get("").toAbsolutePath().toFile())
+    val module by argument("Module to investigate")
+
+    override fun run() {
+        val graph = mavenGraph(directory)
+        val vertex = toMavenVertex(module, graph)
+        if (vertex != null){
+            println(graph.inducedSubGraph(vertex).toDot())
+        } else {
+            System.err.println("Module '$module' not found")
+        }
+    }
+}
+
+fun <T>T?.ifNull(code: () -> Unit): T? {
+    if (this == null) {
+        code.invoke()
+    }
+    return this
+}
+
+class RemoveModule : CliktCommand(name = "remove-modules") {
+    val directory: File by option(help = "Maven project directory (default is current working directory)")
+            .file()
+            .default(Paths.get("").toAbsolutePath().toFile())
+    val modules by argument("Modules to delete").multiple(true)
+    override fun run() {
+        val graph = mavenGraph(directory)
+        val subGraphs = modules.asSequence()
+                .map { module ->
+                    toMavenVertex(module, graph).ifNull {
+                        System.err.println("Module not found: $module")
+                    }
+                }
+                .filterNotNull()
+                .filter {
+                    if (graph.orderIncoming(it) == 0) {
+                        true
+                    } else {
+                        System.err.println("$it cannot be deleted")
+                        false
+                    }
+                }
+                .map {
+                    System.err.println("Calculating inducedSubGraph of $it")
+                    graph.inducedSubGraph(it)
+                }
+                .toList()
+
+        System.err.println("Calculating subGraph vertices")
+        val subGraphVertices = subGraphs.asSequence()
+                .flatMap { it.vertices.asSequence() }
+                .toSet()
+
+        val vDiff = graph.vertices - subGraphVertices
+        val incomingEdges = graph.edges.filter {
+            vDiff.contains(it.parent) && subGraphVertices.contains(it.child)
+        }.toSet()
+
+        val result: MutableSet<MavenVertex> = subGraphVertices.toMutableSet()
+
+        incomingEdges
+                .map { it.child }
+                .toSet()
+                .parallelStream()
+                .forEach {
+                    System.err.println("Calculating inducedSubGraph of ${it}")
+                    result.removeAll(graph.inducedSubGraph(it).vertices)
+                }
+
+        result.forEach { println(it) }
+    }
+}
+
+private fun toMavenVertex(module: String, graph: Graph<MavenVertex, MavenEdge>): MavenVertex? {
+    val moduleComponents = module.split(':')
+    return graph.vertices.find {
+        it.groupId == moduleComponents[0] && it.artifactId == moduleComponents[1]
     }
 }
 
@@ -226,5 +323,7 @@ class MavenDependencies : CliktCommand(name = "maven-dependencies") {
 fun main(args: Array<String>) {
     MavenDependencies().subcommands(
             TopLevelModules(),
-            ModuleSourceFiles()).main(args)
+            ModuleSourceFiles(),
+            RemoveModule(),
+            SubGraphDot()).main(args)
 }

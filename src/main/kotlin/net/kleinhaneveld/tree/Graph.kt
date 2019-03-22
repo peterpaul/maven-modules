@@ -1,5 +1,7 @@
 package net.kleinhaneveld.tree
 
+import java.util.stream.Collectors
+
 interface Edge<out V> {
     val parent: V
     val child: V
@@ -17,11 +19,16 @@ private fun <V, E : Edge<V>>edgesOfVertices(edges: Set<E>): Map<V, Set<E>> {
 
         val vertices: Set<V> = a.keys + b.keys
         return vertices
+                .parallelStream()
                 .map { v -> concatenateSetOfEdgesForVertex(v, a, b) }
                 .reduce { x, y -> x + y }
+                .get()
     }
 
-    val edgesOfVertexMaps: Set<Map<V, Set<E>>> = edges.map { e -> extractEdgesOfVertexMapFromEdge(e) }.toSet()
+    val edgesOfVertexMaps: Set<Map<V, Set<E>>> = edges
+            .parallelStream()
+            .map { e -> extractEdgesOfVertexMapFromEdge(e) }
+            .collect(Collectors.toSet())
 
     return edgesOfVertexMaps.fold(emptyMap()) { a, b -> concatenateEdgesOfVertexMaps(a, b)}
 }
@@ -54,8 +61,10 @@ class Graph<V, out E : Edge<V>> (
             fun union(a: Pair<Set<V>, Set<E>>, b: Pair<Set<V>, Set<E>>): Pair<Set<V>, Set<E>> = Pair(a.first + b.first, a.second + b.second)
             return if (orderOutgoing(v) > 0) {
                 val combinedSubGraphs: Pair<Set<V>, Set<E>> = childrenOfVertex(v)
+                        .parallelStream()
                         .map { subGraph(it) }
                         .reduce { a, b -> union(a, b) }
+                        .get()
                 union(combinedSubGraphs, Pair(setOf(v), outgoingEdgesOfVertex(v)))
             } else {
                 Pair(setOf(v), emptySet())
@@ -112,4 +121,8 @@ fun main(args: Array<String>) {
     val myGraph = Graph(setOf(a, b, c, d, e), setOf(e1, e2, e3, e4, e5), a)
     println(myGraph.toString())
     println(myGraph.toDot())
+
+    println(myGraph.inducedSubGraph(b).toDot())
+
+    println(myGraph.inducedSubGraph(c).toDot())
 }

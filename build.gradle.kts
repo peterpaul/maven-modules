@@ -37,7 +37,7 @@ tasks.withType<Jar> {
         put("Main-Class", "net.kleinhaneveld.tree.PomParserKt")
     }
 
-    configurations.runtimeClasspath.filter {
+    configurations.runtimeClasspath.get().filter {
         it.name.endsWith(".jar")
     }.forEach { jar -> from(zipTree(jar))}
 }
