@@ -12,6 +12,7 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.file
 import java.io.File
 import java.nio.file.Paths
+import java.util.stream.Collectors
 
 abstract class BaseCommand(help: String, name: String) : CliktCommand(help = help, name = name) {
     private val files by requireObject<Map<String, File>>()
@@ -162,12 +163,15 @@ class RemoveModule : BaseCommand(
         val result: MutableSet<MavenVertex> = subGraphVertices.toMutableSet()
 
         incomingEdges
-                .map { it.child }
-                .toSet()
                 .parallelStream()
-                .forEach {
+                .map { it.child }
+                .collect(Collectors.toSet())
+                .parallelStream()
+                .flatMap {
                     debug("Calculating inducedSubGraph of $it")
-                    result.removeAll(graph.inducedSubGraph(it).vertices)
+                    graph.inducedSubGraph(it).vertices.stream() }
+                .forEach {
+                    result.remove(it)
                 }
 
         result.forEach { println(it) }

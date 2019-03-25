@@ -71,11 +71,15 @@ class Graph<V, out E : Edge<V>> (
     }
 
     private fun inducedSubGraph(v: V, processedChildren: ConcurrentHashMap<V, V>): Graph<V, E> {
+        fun alreadyProcessed(v: V, processedChildren: ConcurrentHashMap<V, V>): Boolean {
+            var processed = true
+            processedChildren.getOrPut(v) { processed = false; v }
+            return processed
+        }
+
         fun subGraph(v: V, processedChildren: ConcurrentHashMap<V, V>): Pair<Set<V>, Set<E>> {
             fun Pair<Set<V>, Set<E>>.union(other: Pair<Set<V>, Set<E>>): Pair<Set<V>, Set<E>> = Pair(first + other.first, second + other.second)
-            var didContain = true
-            processedChildren.getOrPut(v) { didContain = false; v }
-            return if (didContain) {
+            return if (alreadyProcessed(v, processedChildren)) {
                 Pair(setOf(v), emptySet())
             } else {
                 val combinedSubGraphs: Pair<Set<V>, Set<E>> = childrenOfVertex(v)
