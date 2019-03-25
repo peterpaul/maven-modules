@@ -66,22 +66,16 @@ class Graph<V, out E : Edge<V>> (
             fun union(a: Pair<Set<V>, Set<E>>, b: Pair<Set<V>, Set<E>>): Pair<Set<V>, Set<E>> = Pair(a.first + b.first, a.second + b.second)
             var didContain = true
             processedChildren.getOrPut(v) { didContain = false; v }
-            if (didContain) {
-                return Pair(setOf(v), emptySet())
+            return if (didContain) {
+                Pair(setOf(v), emptySet())
             } else {
-                return if (orderOutgoing(v) > 0) {
-                    val combinedSubGraphs: Pair<Set<V>, Set<E>> = childrenOfVertex(v)
-                            .parallelStream()
-                            .map {
-                                subGraph(it, processedChildren)
-                            }
-                            .reduce { a, b -> union(a, b) }
-                            .get()
-                    processedChildren[v] = v
-                    union(combinedSubGraphs, Pair(setOf(v), outgoingEdgesOfVertex(v)))
-                } else {
-                    Pair(setOf(v), emptySet())
-                }
+                val combinedSubGraphs: Pair<Set<V>, Set<E>> = childrenOfVertex(v)
+                        .parallelStream()
+                        .map {
+                            subGraph(it, processedChildren)
+                        }
+                        .reduce(Pair(emptySet(), emptySet())) { a, b -> union(a, b) }
+                union(combinedSubGraphs, Pair(setOf(v), outgoingEdgesOfVertex(v)))
             }
         }
 
