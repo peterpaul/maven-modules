@@ -72,7 +72,7 @@ class Graph<V, out E : Edge<V>> (
 
     private fun inducedSubGraph(v: V, processedChildren: ConcurrentHashMap<V, V>): Graph<V, E> {
         fun subGraph(v: V, processedChildren: ConcurrentHashMap<V, V>): Pair<Set<V>, Set<E>> {
-            fun union(a: Pair<Set<V>, Set<E>>, b: Pair<Set<V>, Set<E>>): Pair<Set<V>, Set<E>> = Pair(a.first + b.first, a.second + b.second)
+            fun Pair<Set<V>, Set<E>>.union(other: Pair<Set<V>, Set<E>>): Pair<Set<V>, Set<E>> = Pair(first + other.first, second + other.second)
             var didContain = true
             processedChildren.getOrPut(v) { didContain = false; v }
             return if (didContain) {
@@ -83,8 +83,8 @@ class Graph<V, out E : Edge<V>> (
                         .map {
                             subGraph(it, processedChildren)
                         }
-                        .reduce(Pair(emptySet(), emptySet())) { a, b -> union(a, b) }
-                union(combinedSubGraphs, Pair(setOf(v), outgoingEdgesOfVertex(v)))
+                        .reduce(Pair(emptySet(), emptySet())) { a, b -> a.union(b) }
+                combinedSubGraphs.union(Pair(setOf(v), outgoingEdgesOfVertex(v)))
             }
         }
 
