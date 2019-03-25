@@ -34,6 +34,15 @@ private fun <V, E : Edge<V>>edgesOfVertices(edges: Set<E>): Map<V, Set<E>> {
     return edgesOfVertexMaps.fold(emptyMap()) { a, b -> concatenateEdgesOfVertexMaps(a, b)}
 }
 
+fun <R, T> ((R) -> T).memoize(): (R) -> T {
+    val answers = ConcurrentHashMap<R, T>()
+    return { r ->
+        answers.getOrPut(r) {
+            this.invoke(r)
+        }
+    }
+}
+
 class Graph<V, out E : Edge<V>> (
         val vertices: Set<V>,
         val edges: Set<E>,
