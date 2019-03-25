@@ -1,5 +1,6 @@
 package net.kleinhaneveld.tree
 
+import java.util.concurrent.ConcurrentHashMap
 import java.util.stream.Collectors
 
 interface Edge<out V> {
@@ -57,22 +58,35 @@ class Graph<V, out E : Edge<V>> (
     }
 
     fun inducedSubGraph(v: V): Graph<V, E> {
-        fun subGraph(v: V): Pair<Set<V>, Set<E>> {
+        return inducedSubGraph(v, ConcurrentHashMap())
+    }
+
+    private fun inducedSubGraph(v: V, processedChildren: ConcurrentHashMap<V, V>): Graph<V, E> {
+        fun subGraph(v: V, processedChildren: ConcurrentHashMap<V, V>): Pair<Set<V>, Set<E>> {
             fun union(a: Pair<Set<V>, Set<E>>, b: Pair<Set<V>, Set<E>>): Pair<Set<V>, Set<E>> = Pair(a.first + b.first, a.second + b.second)
-            return if (orderOutgoing(v) > 0) {
-                val combinedSubGraphs: Pair<Set<V>, Set<E>> = childrenOfVertex(v)
-                        .parallelStream()
-                        .map { subGraph(it) }
-                        .reduce { a, b -> union(a, b) }
-                        .get()
-                union(combinedSubGraphs, Pair(setOf(v), outgoingEdgesOfVertex(v)))
+            var didContain = true
+            processedChildren.getOrPut(v) { didContain = false; v }
+            if (didContain) {
+                return Pair(setOf(v), emptySet())
             } else {
-                Pair(setOf(v), emptySet())
+                return if (orderOutgoing(v) > 0) {
+                    val combinedSubGraphs: Pair<Set<V>, Set<E>> = childrenOfVertex(v)
+                            .parallelStream()
+                            .map {
+                                subGraph(it, processedChildren)
+                            }
+                            .reduce { a, b -> union(a, b) }
+                            .get()
+                    processedChildren[v] = v
+                    union(combinedSubGraphs, Pair(setOf(v), outgoingEdgesOfVertex(v)))
+                } else {
+                    Pair(setOf(v), emptySet())
+                }
             }
         }
 
         verifyVertexExists(v)
-        val subgraph: Pair<Set<V>, Set<E>> = subGraph(v)
+        val subgraph: Pair<Set<V>, Set<E>> = subGraph(v, processedChildren)
         return Graph(subgraph.first, subgraph.second, v)
     }
 
