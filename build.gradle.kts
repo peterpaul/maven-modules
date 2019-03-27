@@ -37,14 +37,14 @@ tasks.withType<Jar> {
     manifest.attributes.apply {
         put("Main-Class", "net.kleinhaneveld.tree.PomParserKt")
     }
-
-    configurations.runtimeClasspath.get().filter {
-        it.name.endsWith(".jar")
-    }.forEach { jar -> from(zipTree(jar)) }
 }
 
 tasks.withType<KotlinCompile> {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+}
+
+task<Exec>("deb") {
+    commandLine = listOf("debuild", "-i", "-us", "-uc", "-b")
 }

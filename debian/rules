@@ -13,13 +13,20 @@
 # package maintainers to append LDFLAGS
 #export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
 
-
 %:
-	dh $@
+	dh $@ --with javahelper # use the javahelper extension
 
+override_dh_auto_build:
+	export GRADLE_USER_HOME="`pwd`/gradle"; \
+	export GRADLE_OPTS="-Dorg.gradle.daemon=false -Xmx512m"; \
+	./gradlew installDist; \
+	./gradlew test
 
-# dh_make generated override targets
-# This is example for Cmake (See https://bugs.debian.org/641051 )
-#override_dh_auto_configure:
-#	dh_auto_configure -- #	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
-
+# additional install target of javahelper
+override_jh_installlibs:
+	LIB_DIR="debian/maven-dependencies/opt/maven-dependencies/lib"; \
+	mkdir -p $${LIB_DIR}; \
+	install build/install/maven-dependencies/lib/*.jar $${LIB_DIR}; \
+	BIN_DIR="debian/maven-dependencies/opt/maven-dependencies/bin"; \
+	mkdir -p $${BIN_DIR}; \
+	install --mode=775 build/install/maven-dependencies/bin/* $${BIN_DIR};

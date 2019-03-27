@@ -4,4 +4,9 @@
 
 Before being able to build a debian image, you need to run:
 
-    sudo apt install dh-make debhelper javahelper
+    sudo apt install debhelper javahelper
+
+Then
+
+    ./gradlew deb
+
