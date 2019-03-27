@@ -1,10 +1,10 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: maven-modules
-Source: <url://example.com>
+Source: https://github.com/peterpaul/maven-modules
 
 Files: *
-Copyright: <years> <put author's name and email here>
-           <years> <likewise for another author>
+Copyright: 2019 Peterpaul Taekele Klein Haneveld <pp.kleinhaneveld@gmail.com>
+
 License: GPL-3.0+
 
 Files: debian/*
