@@ -185,7 +185,7 @@ private fun toMavenVertex(module: String, graph: Graph<MavenVertex, MavenEdge>):
     }
 }
 
-class MavenDependencies : CliktCommand(name = "maven-dependencies") {
+class MavenDependencies : CliktCommand(name = "maven-modules") {
     val files by findObject { mutableMapOf<String, File>() }
     val flags by findObject { mutableMapOf<String, Boolean>() }
     val directory: File by option(help = "Maven project directory (default is current working directory)")

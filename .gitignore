@@ -27,7 +27,7 @@ build/
 /gradle/wrapper/dists/
 
 /debian/.debhelper/
-/debian/maven-dependencies/
+/debian/maven-modules/
 /debian/debhelper-build-stamp
-/debian/maven-dependencies.substvars
+/debian/maven-modules.substvars
 /debian/files

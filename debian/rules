@@ -24,9 +24,9 @@ override_dh_auto_build:
 
 # additional install target of javahelper
 override_jh_installlibs:
-	LIB_DIR="debian/maven-dependencies/opt/maven-dependencies/lib"; \
+	LIB_DIR="debian/maven-modules/opt/maven-modules/lib"; \
 	mkdir -p $${LIB_DIR}; \
-	install build/install/maven-dependencies/lib/*.jar $${LIB_DIR}; \
-	BIN_DIR="debian/maven-dependencies/opt/maven-dependencies/bin"; \
+	install build/install/maven-modules/lib/*.jar $${LIB_DIR}; \
+	BIN_DIR="debian/maven-modules/opt/maven-modules/bin"; \
 	mkdir -p $${BIN_DIR}; \
-	install --mode=775 build/install/maven-dependencies/bin/* $${BIN_DIR};
+	install --mode=775 build/install/maven-modules/bin/* $${BIN_DIR};
