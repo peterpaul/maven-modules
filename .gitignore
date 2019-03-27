@@ -20,3 +20,14 @@ build/
 
 .idea/
 *.iml
+
+/gradle/caches/
+/gradle/native/
+/gradle/notifications/
+/gradle/wrapper/dists/
+
+/debian/.debhelper/
+/debian/maven-dependencies/
+/debian/debhelper-build-stamp
+/debian/maven-dependencies.substvars
+/debian/files
