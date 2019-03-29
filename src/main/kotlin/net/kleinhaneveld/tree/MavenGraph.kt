@@ -27,12 +27,11 @@ data class MavenPom(
 data class MavenVertex(
         val groupId: String,
         val artifactId: String,
-        val type: String?,
-        val sourceFiles: Int
+        val coordinate: MavenCoordinate
 ) {
     fun toKey(): String = "$groupId:$artifactId"
 
-    override fun toString(): String = "$groupId:$artifactId:$type - $sourceFiles"
+    override fun toString(): String = "$groupId:$artifactId:${coordinate.type}"
 
     override fun equals(other: Any?): Boolean = when (other) {
         is MavenVertex -> Objects.equals(this.groupId, other.groupId) && Objects.equals(this.artifactId, other.artifactId)
@@ -40,10 +39,9 @@ data class MavenVertex(
     }
 
     override fun hashCode(): Int = Objects.hash(this.groupId, this.artifactId)
-    // override fun hashCode(): Int = this.groupId.hashCode() + this.artifactId.hashCode()
 }
 
-fun MavenCoordinate.toVertex(): MavenVertex = MavenVertex(this.groupId, this.artifactId, this.type, this.sourceFiles)
+fun MavenCoordinate.toVertex(): MavenVertex = MavenVertex(this.groupId, this.artifactId, this)
 
 data class MavenEdge(
         override val parent: MavenVertex,

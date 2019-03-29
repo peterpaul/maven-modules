@@ -45,8 +45,8 @@ class TopLevelModules : BaseCommand(
         val graph = mavenGraph()
         graph.vertices.filter { graph.orderIncoming(it) == 0 }
                 .filter {
-                    (type == null || it.type?.equals(type) ?: true)
-                            && (skipType == null || !(it.type?.equals(skipType) ?: false))
+                    (type == null || it.coordinate.type?.equals(type) ?: true)
+                            && (skipType == null || !(it.coordinate.type?.equals(skipType) ?: false))
                             && (!skipTests || !it.artifactId.contains("-test"))
                 }
                 .forEach { println(it) }
@@ -67,12 +67,12 @@ class ModuleSourceFiles : BaseCommand(
         val graph = mavenGraph()
         graph.vertices.asSequence()
                 .filter {
-                    (type == null || it.type?.equals(type) ?: true)
-                            && (skipType == null || !(it.type?.equals(skipType) ?: false))
+                    (type == null || it.coordinate.type?.equals(type) ?: true)
+                            && (skipType == null || !(it.coordinate.type?.equals(skipType) ?: false))
                             && (!skipTests || !it.artifactId.contains("-test"))
                 }
-                .sortedWith(kotlin.Comparator { o1, o2 -> o2.sourceFiles - o1.sourceFiles })
-                .forEach { println(it) }
+                .sortedWith(kotlin.Comparator { o1, o2 -> o2.coordinate.sourceFiles - o1.coordinate.sourceFiles })
+                .forEach { println("${it.coordinate.sourceFiles} files - $it") }
     }
 }
 
@@ -88,8 +88,8 @@ class ModuleDependencyCount : BaseCommand(name = "module-dependency-count",
         val graph = mavenGraph()
         graph.vertices.asSequence()
                 .filter {
-                    (type == null || it.type?.equals(type) ?: true)
-                            && (skipType == null || !(it.type?.equals(skipType) ?: false))
+                    (type == null || it.coordinate.type?.equals(type) ?: true)
+                            && (skipType == null || !(it.coordinate.type?.equals(skipType) ?: false))
                             && (!skipTests || !it.artifactId.contains("-test"))
                 }
                 .map {
@@ -98,7 +98,7 @@ class ModuleDependencyCount : BaseCommand(name = "module-dependency-count",
                 }
                 .sortedWith(kotlin.Comparator { a, b -> b.first - a.first })
                 .forEach {
-                    println("${it.first} - ${it.second}")
+                    println("${it.first} references - ${it.second}")
                 }
     }
 }
