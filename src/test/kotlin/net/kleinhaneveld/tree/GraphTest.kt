@@ -1,8 +1,6 @@
 package net.kleinhaneveld.tree
 
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.ObjectAssert
-import org.junit.Ignore
 import org.junit.Test
 
 data class MyEdge(override val parent: String, override val child: String) : Edge<String>
@@ -32,20 +30,21 @@ fun getSubGraphOfC(): Graph<String, MyEdge> {
 
 internal class GraphTest {
     @Test
-    @Ignore
     fun testThingy() {
         val myGraph = getGraph()
 
         println(myGraph.toString())
         println(myGraph.toDot())
 
-        myGraph.inducedSubGraph("B").assert().isEqualTo(getSubGraphOfB())
+        myGraph.inducedSubGraph("B").isEqualTo(getSubGraphOfB())
 
-        myGraph.inducedSubGraph("C").assert().isEqualTo(getSubGraphOfC())
-
+        myGraph.inducedSubGraph("C").isEqualTo(getSubGraphOfC())
     }
 }
 
-fun Any.assert(): ObjectAssert<Any> {
-    return assertThat(this)
+fun <V, E : Edge<V>>Graph<V, E>.isEqualTo(other: Graph<V, E>) {
+    assertThat(root).isEqualTo(other.root)
+    assertThat(vertices).containsAll(other.vertices)
+    assertThat(edges).containsAll(other.edges)
+
 }
