@@ -46,5 +46,4 @@ fun <V, E : Edge<V>>Graph<V, E>.isEqualTo(other: Graph<V, E>) {
     assertThat(root).isEqualTo(other.root)
     assertThat(vertices).containsAll(other.vertices)
     assertThat(edges).containsAll(other.edges)
-
 }
