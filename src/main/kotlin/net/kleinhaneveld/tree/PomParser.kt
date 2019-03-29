@@ -11,6 +11,8 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.file
 import java.io.File
+import java.io.FileOutputStream
+import java.io.PrintStream
 import java.nio.file.Paths
 import java.util.stream.Collectors
 
@@ -25,6 +27,7 @@ abstract class BaseCommand(help: String, name: String) : CliktCommand(help = hel
             System.err.println(line)
         }
     }
+
     fun error(line: String) = System.err.println(line)
 }
 
@@ -101,21 +104,33 @@ class ModuleDependencyCount : BaseCommand(name = "module-dependency-count",
 }
 
 class SubGraphDot : BaseCommand(name = "subgraph-dot",
-        help = "Generate dot graph for MODULE.") {
+        help = "Generate dot graph for MODULE as OUTPUT-FILE.") {
     private val module by argument(help = "Module to investigate")
+    private val outputType: String by option("--image-type", "-t", help = "Image type (default: 'png')").default("png")
+    private val dotFile: String by option("--dot-file", "-f", help = "File name for dot file (default: 'subgraph.dot')").default("subgraph.dot")
+    private val outputFile: String by argument("OUTPUT-FILE", help = "Target file for image")
 
     override fun run() {
         val graph = mavenGraph()
         val vertex = toMavenVertex(module, graph)
-        if (vertex != null){
-            println(graph.inducedSubGraph(vertex).toDot())
+        val dot: String = if (vertex != null) {
+            graph.inducedSubGraph(vertex).toDot()
         } else {
             error("Module '$module' not found")
+            System.exit(1)
+            ""
+        }
+        PrintStream(FileOutputStream(dotFile)).print(dot)
+        val command = arrayOf("dot", "-T$outputType", dotFile, "-o", outputFile)
+        val process: Process = Runtime.getRuntime().exec(command)
+        val err: Int = process.waitFor()
+        if (err != 0) {
+            error("Failed to generate dot:\n$dot")
         }
     }
 }
 
-fun <T>T?.ifNull(code: () -> Unit): T? {
+fun <T> T?.ifNull(code: () -> Unit): T? {
     if (this == null) {
         code.invoke()
     }
@@ -169,7 +184,8 @@ class RemoveModule : BaseCommand(
                 .parallelStream()
                 .flatMap {
                     debug("Calculating inducedSubGraph of $it")
-                    graph.inducedSubGraph(it).vertices.stream() }
+                    graph.inducedSubGraph(it).vertices.stream()
+                }
                 .forEach {
                     result.remove(it)
                 }
