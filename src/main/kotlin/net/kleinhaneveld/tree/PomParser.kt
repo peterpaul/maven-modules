@@ -202,12 +202,12 @@ private fun toMavenVertex(module: String, graph: Graph<MavenVertex, MavenEdge>):
 }
 
 class MavenDependencies : CliktCommand(name = "maven-modules") {
-    val files by findObject { mutableMapOf<String, File>() }
-    val flags by findObject { mutableMapOf<String, Boolean>() }
-    val directory: File by option(help = "Maven project directory (default is current working directory)")
+    private val files by findObject { mutableMapOf<String, File>() }
+    private val flags by findObject { mutableMapOf<String, Boolean>() }
+    private val directory: File by option(help = "Maven project directory (default is current working directory)")
             .file()
             .default(Paths.get("").toAbsolutePath().toFile())
-    val verbose: Boolean by option("--verbose", "-v", help = "Write debug output to stderr.").flag("--quiet", "-q", default = false)
+    private val verbose: Boolean by option("--verbose", "-v", help = "Write debug output to stderr.").flag("--quiet", "-q", default = false)
     override fun run() {
         files["DIRECTORY"] = directory
         flags["VERBOSE"] = verbose
