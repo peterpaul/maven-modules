@@ -26,6 +26,8 @@ dependencies {
 
     // Use the Kotlin JUnit integration
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit")
+    
+    testCompile("org.assertj:assertj-core:3.11.1")
 }
 
 application {

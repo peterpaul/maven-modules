@@ -125,25 +125,3 @@ class Graph<V, out E : Edge<V>> (
         return builder.toString()
     }
 }
-
-data class MyEdge(override val parent: String, override val child: String) : Edge<String>
-
-fun main(args: Array<String>) {
-    val a = "A"
-    val b = "B"
-    val c = "C"
-    val d = "D"
-    val e = "E"
-    val e1 = MyEdge(a, b)
-    val e2 = MyEdge(a, c)
-    val e3 = MyEdge(b, e)
-    val e4 = MyEdge(c, d)
-    val e5 = MyEdge(d, e)
-    val myGraph = Graph(setOf(a, b, c, d, e), setOf(e1, e2, e3, e4, e5), a)
-    println(myGraph.toString())
-    println(myGraph.toDot())
-
-    println(myGraph.inducedSubGraph(b).toDot())
-
-    println(myGraph.inducedSubGraph(c).toDot())
-}
